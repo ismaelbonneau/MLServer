@@ -1,3 +1,6 @@
+import os
+
+import mlflow
 import pytest
 from unittest import mock
 import numpy as np
@@ -12,8 +15,11 @@ from mlserver.types import (
     InferenceResponse,
     ResponseOutput,
 )
+from sklearn.dummy import DummyClassifier
+from mlflow.types.schema import ColSpec, TensorSpec, DataType, Schema, Array
 from mlflow.pyfunc import PyFuncModel
 from mlflow.models.signature import ModelSignature
+from mlserver.settings import ModelSettings, ModelParameters
 from mlflow.pyfunc.scoring_server import CONTENT_TYPE_CSV, CONTENT_TYPE_JSON
 
 from mlserver_mlflow import MLflowRuntime
@@ -252,10 +258,60 @@ async def test_invocation_with_params(
         runtime._model, "predict", return_value=[1, 2, 3]
     ) as predict_mock:
         await runtime.invocations(*input)
+        print(predict_mock.call_args[0][0].get("foo"))
         np.testing.assert_array_equal(
             predict_mock.call_args[0][0].get("foo"), expected["data"]["foo"]
         )
         assert predict_mock.call_args.kwargs["params"] == expected["params"]
+
+
+async def test_invocation_with_nested_array(tmp_path: str, dataset: tuple):
+    X, y = dataset
+
+    clf = DummyClassifier(strategy="prior")
+    clf.fit(X, y)
+
+    model_path = os.path.join(tmp_path, "dummy-model")
+    mlflow.sklearn.save_model(
+        clf,
+        path=model_path,
+        signature=ModelSignature(
+            inputs=Schema([ColSpec(type=Array(Array(DataType.string)), name="foo")]),
+            outputs=mlflow.models.infer_signature(model_output=y).outputs,
+        ),
+    )
+
+    runtime = MLflowRuntime(
+        ModelSettings(
+            name="mlflow-model",
+            implementation=MLflowRuntime,
+            parameters=ModelParameters(uri=model_path),
+        )
+    )
+    runtime.ready = await runtime.load()
+
+    input = [
+        '{"dataframe_split": {'
+        '"columns": ["foo"], '
+        '"data": ['
+        "    ["
+        '        [["line_1_e1", "1"], ["line_1_e2", "2"]]'
+        "    ],"
+        "    ["
+        '        [["line_2_e1", "3"]]'
+        "    ]"
+        "]}}",
+        CONTENT_TYPE_JSON,
+    ]
+
+    expected = [[["line_1_e1", "1"], ["line_1_e2", "2"]], [["line_2_e1", "3"]]]
+    with mock.patch.object(
+        runtime._model, "predict", return_value=[1, 2, 3]
+    ) as predict_mock:
+        await runtime.invocations(*input)
+        print(list(predict_mock.call_args[0][0].get("foo")))
+        # assert len(predict_mock.call_args[0][0].get("foo")) == 2
+        assert list(predict_mock.call_args[0][0].get("foo")) == expected
 
 
 @pytest.mark.parametrize(

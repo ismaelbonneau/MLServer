@@ -3,7 +3,7 @@ import numpy as np
 
 from typing import Tuple, List
 
-from mlflow.types.schema import ColSpec, TensorSpec, DataType, Schema
+from mlflow.types.schema import ColSpec, TensorSpec, DataType, Schema, Array
 from mlflow.pyfunc import _enforce_schema
 from mlserver.codecs import (
     NumpyCodec,
@@ -45,6 +45,15 @@ from mlserver_mlflow.metadata import (
         (
             ColSpec(name="foo", type=DataType.binary),
             (MDatatype.BYTES, Base64Codec.ContentType),
+        ),
+        (
+            ColSpec(name="foo", type=Array(DataType.string)),
+            (MDatatype.BYTES, NumpyCodec.ContentType),
+        ),
+        (
+            # Nested Array of strings
+            ColSpec(name="foo", type=Array(Array(DataType.string))),
+            (MDatatype.BYTES, NumpyCodec.ContentType),
         ),
     ],
 )
@@ -140,6 +149,17 @@ def test_get_shape(input_spec: InputSpec, expected: List[int]):
                     shape=[-1, 1],
                     parameters=Parameters(content_type=NumpyCodec.ContentType),
                 ),
+            ],
+        ),
+        (
+            Schema(inputs=[ColSpec(name="foo", type=Array(DataType.string))]),
+            [
+                MetadataTensor(
+                    name="foo",
+                    datatype="BYTES",
+                    shape=[-1, 1],
+                    parameters=Parameters(content_type=NumpyCodec.ContentType),
+                )
             ],
         ),
     ],

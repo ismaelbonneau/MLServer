@@ -1,6 +1,15 @@
 from typing import Union, Tuple, List, Optional
 
-from mlflow.types.schema import Schema, ColSpec, TensorSpec, DataType
+from mlflow.types.schema import (
+    Schema,
+    ColSpec,
+    TensorSpec,
+    DataType,
+    Array,
+    Map,
+    Object,
+    AnyType,
+)
 
 from mlserver.types import MetadataTensor, Parameters
 from mlserver.types import Datatype as MDatatype
@@ -37,6 +46,8 @@ def _get_content_type(input_spec: InputSpec) -> Tuple[MDatatype, str]:
         datatype = to_datatype(input_spec.type)
         content_type = NumpyCodec.ContentType
         return datatype, content_type
+    elif isinstance(input_spec.type, Union[Array, Map, Object, AnyType]):
+        return (MDatatype.BYTES, NumpyCodec.ContentType)
 
     # TODO: Check if new type, which may not exist
     return _MLflowToContentType[input_spec.type]
